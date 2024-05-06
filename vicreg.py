@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from configs import ConfigBase
 import models
 import diagnostics
-
+import matplotlib.pyplot as plt
 
 @dataclass
 class VICRegConfig(ConfigBase):
@@ -107,10 +107,16 @@ class VICRegPredMultistep(torch.nn.Module):
         """states [T, batch_size, 1, 28, 28]
         actions [T-1, batch_size]
         """
-
+        print(states.shape)
         states_flatten = states.reshape(-1, *states.shape[2:])
+        print(states_flatten.shape)
         all_states_enc = self.backbone(states_flatten)
+        print(all_states_enc.shape)
         all_states_enc = all_states_enc.view(*states.shape[:2], -1)
+        print(all_states_enc.shape)
+        plot_states_for_visibility(states, actions)
+
+
 
         burnin_states_enc = all_states_enc[: self.args.rnn_burnin - 1]
         states_enc = all_states_enc[self.args.rnn_burnin - 1 :]
@@ -233,3 +239,18 @@ class VICRegPredMultistep(torch.nn.Module):
             ),
         )
         return loss_info
+
+def plot_states_for_visibility(states, actions):
+    print('actions:')
+    print(actions.shape)
+    for x in actions[:, 0]:
+        print(f'\t{[float(x[0]), float(x[1])]}')
+    first_dim_tensor = states[:, 0, ...]
+    first_dim_tensor = first_dim_tensor.squeeze(2)
+    lined_images = torch.zeros((28, 28 * 17 + 16))
+    for i, img in enumerate(first_dim_tensor):
+        lined_images[:, i * 29:i * 29 + 28] = img
+        if i < 16:
+            lined_images[:, i * 29 + 28:i * 29 + 29] = 1
+    plt.imshow(lined_images.numpy(), cmap='gray')
+    plt.show()
