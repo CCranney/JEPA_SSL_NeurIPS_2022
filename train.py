@@ -1,7 +1,7 @@
 import data
 from typing import Optional
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import dataclasses
 from pathlib import Path
 import random
@@ -24,7 +24,7 @@ from vicreg import VICRegConfig, VICRegPredMultistep
 from lars import LARS, exclude_bias_and_norm, adjust_learning_rate
 import probing
 
-# os.environ['WANDB_DISABLED'] = "true"
+os.environ['WANDB_DISABLED'] = "true"
 
 
 def seed_everything(seed):
@@ -70,30 +70,31 @@ class TrainConfig(ConfigBase):
     dataset_static_noise_speed: float = 0.0
     dataset_dot_std: float = 1.3
     dataset_normalize: bool = False
-    vicreg: VICRegConfig = VICRegConfig()
-    rssm: RSSMConfig = RSSMConfig()
-    simclr: SimCLRConfig = SimCLRConfig()
+    vicreg: VICRegConfig = field(default_factory=VICRegConfig)
+    rssm: RSSMConfig = field(default_factory=RSSMConfig)
+    simclr: SimCLRConfig = field(default_factory=SimCLRConfig)
     eval_at_the_end_only: bool = False
     dataset_type: DatasetType = DatasetType.Single
+    probing_cfg: probing.ProbingConfig = field(default_factory=probing.ProbingConfig)
 
-    probing_cfg: probing.ProbingConfig = probing.ProbingConfig()
 
 
 class Trainer:
     def __init__(self, config: TrainConfig):
+        config.dataset_static_noise = 0.0
         self.config = config
         if self.config.model_type == ModelType.RSSM:
             self.model_config = self.config.rssm
             self.pred_ms = RSSMPredMultistep(config.rssm)
-            self.pred_ms = self.pred_ms.cuda()
+            self.pred_ms = self.pred_ms.to('mps')  # Update this line
         elif self.config.model_type == ModelType.VICReg:
             self.model_config = self.config.vicreg
             self.pred_ms = VICRegPredMultistep(self.config.vicreg)
-            self.pred_ms = self.pred_ms.cuda()
+            self.pred_ms = self.pred_ms.to('mps')  # Update this line
         elif self.config.model_type == ModelType.SimCLR:
             self.model_config = self.config.simclr
             self.pred_ms = SimCLR(config.simclr)
-            self.pred_ms = self.pred_ms.cuda()
+            self.pred_ms = self.pred_ms.to('mps')  # Update this line
         else:
             raise ValueError(f"No valid model type : {self.config.model_type}")
         if config.wandb:
@@ -136,17 +137,17 @@ class Trainer:
                 f"single dot datset provides one channel, while {self.pred_ms.args.channels} were expected"
             )
             self.ds = data.ContinuousMotionDataset(
-                self.config.val_dataset_size // self.config.dataset_batch_size,
-                batch_size=self.config.dataset_batch_size,
-                n_steps=self.config.n_steps + self.pred_ms.args.rnn_burnin - 1,
-                noise=self.config.dataset_noise,
-                static_noise=self.config.dataset_static_noise,
-                static_noise_speed=self.config.dataset_static_noise_speed,
-                structured_noise=self.config.dataset_structured_noise,
-                structured_dataset_path=self.config.dataset_structured_noise_path,
-                std=self.config.dataset_dot_std,
-                normalize=self.config.dataset_normalize,
-                device=torch.device("cuda"),
+                self.config.val_dataset_size // self.config.dataset_batch_size, # 10000 // 32
+                batch_size=self.config.dataset_batch_size, #32
+                n_steps=self.config.n_steps + self.pred_ms.args.rnn_burnin - 1, ## 17 + ?
+                noise=self.config.dataset_noise, # 0.0
+                static_noise=self.config.dataset_static_noise, # 1.25
+                static_noise_speed=self.config.dataset_static_noise_speed, # #0.0
+                structured_noise=self.config.dataset_structured_noise, # False
+                structured_dataset_path=self.config.dataset_structured_noise_path, # /tmp/cifar
+                std=self.config.dataset_dot_std, # 1.3
+                normalize=self.config.dataset_normalize, # True
+                device=torch.device("mps"), # that was me :)
                 train=True,
             )
             self.val_ds = data.ContinuousMotionDataset(
@@ -160,7 +161,7 @@ class Trainer:
                 structured_dataset_path=self.config.dataset_structured_noise_path,
                 std=self.config.dataset_dot_std,
                 normalize=self.config.dataset_normalize,
-                device=torch.device("cuda"),
+                device=torch.device("mps"),
                 train=False,
             )
         elif self.config.dataset_type == DatasetType.Multiple:
@@ -177,7 +178,7 @@ class Trainer:
                 std=self.config.dataset_dot_std,
                 normalize=self.config.dataset_normalize,
                 sum_image=sum_image,
-                device=torch.device("cuda"),
+                device=torch.device("mps"),
                 train=True,
             )
             self.val_ds = data.create_three_datasets(
@@ -192,7 +193,7 @@ class Trainer:
                 std=self.config.dataset_dot_std,
                 normalize=self.config.dataset_normalize,
                 sum_image=sum_image,
-                device=torch.device("cuda"),
+                device=torch.device("mps"),
                 train=False,
             )
         else:
@@ -239,11 +240,15 @@ class Trainer:
         for epoch in tqdm(range(1, self.pred_ms.args.epochs + 1)):
             self.epoch = epoch
             for step, batch in tqdm(enumerate(self.ds, start=epoch * len(self.ds))):
-                # move to cuda and shuffle batch and time
-                s = batch.states.cuda().permute(1, 0, 2, 3, 4)
-                a = batch.actions.cuda().permute(1, 0, 2, 3)
+                s = batch.states.to('mps').permute(1, 0, 2, 3, 4)
+                print(s.shape)
+                print('a shape start ---------')
+                print(batch.actions.shape)
+                a = batch.actions.to('mps').permute(1, 0, 2, 3)
+                print(a.shape)
                 a = a[:, :, 0]  # we only get the actions of the first dot
-
+                print(a.shape)
+                print('a shape end ---------')
                 if self.config.model_type == ModelType.RSSM:
                     lr = self.model_config.learning_rate
                     if epoch > 36:

@@ -139,7 +139,7 @@ class VICRegPredMultistep(torch.nn.Module):
         # x_t                proj(enc(x_t+1))
 
         repr_loss = 0.0
-        action_loss = torch.tensor(0.0).cuda()
+        action_loss = torch.tensor(0.0).to('mps')
 
         for i in range(T - 1):
             pred_enc = pred_encs[i]
@@ -157,7 +157,7 @@ class VICRegPredMultistep(torch.nn.Module):
 
             current_enc = pred_enc
 
-        reconstruction_loss = torch.tensor(0.0).cuda()
+        reconstruction_loss = torch.tensor(0.0).to('mps')
 
         if self.args.decoding_coeff > 0:
             flattened_states_enc = states_enc.view(-1, self.embedding)
@@ -179,10 +179,10 @@ class VICRegPredMultistep(torch.nn.Module):
         repr_loss /= T - 1
         action_loss /= T - 1
 
-        total_proj_std_loss = torch.tensor(0.0).cuda()
-        total_proj_cov_loss = torch.tensor(0.0).cuda()
-        total_enc_std_loss = torch.tensor(0.0).cuda()
-        total_enc_cov_loss = torch.tensor(0.0).cuda()
+        total_proj_std_loss = torch.tensor(0.0).to('mps')
+        total_proj_cov_loss = torch.tensor(0.0).to('mps')
+        total_enc_std_loss = torch.tensor(0.0).to('mps')
+        total_enc_cov_loss = torch.tensor(0.0).to('mps')
 
         if not self.args.skip_first_step_vc:
             enc_projs = zip(states_enc, states_proj)

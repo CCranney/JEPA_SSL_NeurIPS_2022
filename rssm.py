@@ -252,7 +252,7 @@ class RSSMPredMultistep(torch.nn.Module):
         z0 = Normal(prior_mu0, (prior_var0))
         sampled_prior_state = z0.sample()
         loss = 0.0
-        kl_loss = torch.tensor(0.0).cuda()
+        kl_loss = torch.tensor(0.0).to('mps')
         reconstruction0 = self.decoder(sampled_prior_state, multi_layer_rnn_beliefs)
         loss = F.mse_loss(reconstruction0, states[0], reduction="mean")
         for i in range(T - 1):

@@ -29,7 +29,7 @@ def probe_enc_position_visualize(
     backbone: torch.nn.Module, prober: torch.nn.Module, dataset
 ):
     batch = next(iter(dataset))
-    enc = backbone(batch.states[:, 0].cuda())
+    enc = backbone(batch.states[:, 0].to('mps'))
     pred_loc = prober(enc)
 
     plt.figure(dpi=200)
@@ -72,7 +72,7 @@ def probe_enc_position(
 
     prober_output_shape = test_batch.locations[0, 0].shape
     prober = Prober(embedding, prober_arch, output_shape=prober_output_shape)
-    prober = prober.cuda()
+    prober = prober.to('mps')
 
     if not config.full_finetune:
         optimizer_pred_prober = torch.optim.Adam(prober.parameters(), config.lr)
@@ -92,9 +92,9 @@ def probe_enc_position(
 
     for epoch in tqdm(range(config.epochs_enc)):
         for batch in dataset:
-            target_loc = batch.locations[:, 0].cuda().float()
+            target_loc = batch.locations[:, 0].to('mps').float()
 
-            e = backbone(batch.states[:, 0].cuda())
+            e = backbone(batch.states[:, 0].to('mps'))
             pred_loc = prober(e)
 
             loss = location_losses(pred_loc, target_loc)
@@ -125,8 +125,8 @@ def probe_enc_position(
     with torch.no_grad():
         eval_losses = []
         for batch in dataset:
-            target_loc = batch.locations[:, 0].cuda().float()
-            e = backbone(batch.states[:, 0].cuda())
+            target_loc = batch.locations[:, 0].to('mps').float()
+            e = backbone(batch.states[:, 0].to('mps'))
             pred_loc = prober(e)
             loss = location_losses(pred_loc, target_loc).mean()
             eval_losses.append(loss.item())
@@ -156,12 +156,12 @@ def probe_pred_position_visualize(
 ):
     batch = next(iter(dataset))
 
-    burnin_states = batch.states[:, : burn_in - 1].cuda().permute(1, 0, 2, 3, 4)
-    states = batch.states[:, burn_in - 1 :].cuda().permute(1, 0, 2, 3, 4)
+    burnin_states = batch.states[:, : burn_in - 1].to('mps').permute(1, 0, 2, 3, 4)
+    states = batch.states[:, burn_in - 1 :].to('mps').permute(1, 0, 2, 3, 4)
 
     # drop actions of other spheres, put time first
-    burnin_actions = batch.actions[:, : burn_in - 1, 0].cuda().permute(1, 0, 2)
-    actions = batch.actions[:, burn_in - 1 :, 0].cuda().permute(1, 0, 2)
+    burnin_actions = batch.actions[:, : burn_in - 1, 0].to('mps').permute(1, 0, 2)
+    actions = batch.actions[:, burn_in - 1 :, 0].to('mps').permute(1, 0, 2)
 
     if burn_in > 1:
         burnin_encodings = model(burnin_states.flatten(0, 1)).view(
@@ -171,7 +171,7 @@ def probe_pred_position_visualize(
     else:
         h0 = None
 
-    e = model(states[0].cuda())
+    e = model(states[0].to('mps'))
     pred_encs = predictor.predict_sequence(enc=e, actions=actions, h=h0)
 
     # for i in range(batch.actions.shape[1]):
@@ -244,7 +244,7 @@ def probe_pred_position(
 
     prober_output_shape = test_batch.locations[0, 0].shape
     prober = Prober(embedding, config.prober_arch, output_shape=prober_output_shape)
-    prober = prober.cuda()
+    prober = prober.to('mps')
 
     if not config.full_finetune:
         optimizer_pred_prober = torch.optim.Adam(prober.parameters(), config.lr)
@@ -260,12 +260,12 @@ def probe_pred_position(
     for epoch in tqdm(range(config.epochs)):
         for batch in dataset:
             # put time first
-            burnin_states = batch.states[:, : burn_in - 1].cuda().permute(1, 0, 2, 3, 4)
-            states = batch.states[:, burn_in - 1 :].cuda().permute(1, 0, 2, 3, 4)
+            burnin_states = batch.states[:, : burn_in - 1].to('mps').permute(1, 0, 2, 3, 4)
+            states = batch.states[:, burn_in - 1 :].to('mps').permute(1, 0, 2, 3, 4)
 
             # drop actions of other spheres, put time first
-            burnin_actions = batch.actions[:, : burn_in - 1, 0].cuda().permute(1, 0, 2)
-            actions = batch.actions[:, burn_in - 1 :, 0].cuda().permute(1, 0, 2)
+            burnin_actions = batch.actions[:, : burn_in - 1, 0].to('mps').permute(1, 0, 2)
+            actions = batch.actions[:, burn_in - 1 :, 0].to('mps').permute(1, 0, 2)
 
             if burn_in > 1:
                 burnin_encodings = backbone(burnin_states.flatten(0, 1)).view(
@@ -284,7 +284,7 @@ def probe_pred_position(
             pred_locs = torch.stack([prober(x) for x in all_encs], dim=1)
 
             losses = location_losses(
-                pred_locs, batch.locations[:, burn_in - 1 :].cuda()
+                pred_locs, batch.locations[:, burn_in - 1 :].to('mps')
             )
 
             loss = losses.mean()
@@ -315,12 +315,12 @@ def probe_pred_position(
         eval_losses = []
         for batch in dataset:
             # put time first
-            burnin_states = batch.states[:, : burn_in - 1].cuda().permute(1, 0, 2, 3, 4)
-            states = batch.states[:, burn_in - 1 :].cuda().permute(1, 0, 2, 3, 4)
+            burnin_states = batch.states[:, : burn_in - 1].to('mps').permute(1, 0, 2, 3, 4)
+            states = batch.states[:, burn_in - 1 :].to('mps').permute(1, 0, 2, 3, 4)
 
             # drop actions of other spheres, put time first
-            burnin_actions = batch.actions[:, : burn_in - 1, 0].cuda().permute(1, 0, 2)
-            actions = batch.actions[:, burn_in - 1 :, 0].cuda().permute(1, 0, 2)
+            burnin_actions = batch.actions[:, : burn_in - 1, 0].to('mps').permute(1, 0, 2)
+            actions = batch.actions[:, burn_in - 1 :, 0].to('mps').permute(1, 0, 2)
 
             if burn_in > 1:
                 burnin_encodings = backbone(burnin_states.flatten(0, 1)).view(
@@ -339,7 +339,7 @@ def probe_pred_position(
             pred_locs = torch.stack([prober(x) for x in all_encs], dim=1)
 
             losses = location_losses(
-                pred_locs, batch.locations[:, burn_in - 1 :].cuda()
+                pred_locs, batch.locations[:, burn_in - 1 :].to('mps')
             )
 
             eval_losses.append(losses)
@@ -400,8 +400,8 @@ def probe_mpc(
         # plt.subplot(1, 2, 2)
         # plt.imshow(state2[0], origin=''lower)
 
-        enc1 = backbone(state1.unsqueeze(0).cuda())
-        # enc2 = backbone(state2.unsqueeze(0).cuda())
+        enc1 = backbone(state1.unsqueeze(0).to('mps'))
+        # enc2 = backbone(state2.unsqueeze(0).to('mps'))
 
         directions = torch.rand((plan_size, 2), device="cuda") * 2 - 1
         speeds = torch.rand((plan_size, 1), device="cuda") * 4
@@ -417,7 +417,7 @@ def probe_mpc(
             actions_2 = actions_n[:, :2] * actions[:, 2].unsqueeze(-1)
 
             pred_encs = predictor.predict_sequence(
-                enc=current_enc, actions=actions_2.unsqueeze(1).cuda()
+                enc=current_enc, actions=actions_2.unsqueeze(1).to('mps')
             )
             # for i in range(actions.shape[0]):
             #     # t = torch.concat([current_enc, actions_2[i].unsqueeze(0)], dim=1)
@@ -426,7 +426,7 @@ def probe_mpc(
 
             pred_loc = prober(pred_encs[-1])
             #     target_loc = prober(enc2)
-            target_loc = location2.cuda().float().unsqueeze(0)
+            target_loc = location2.to('mps').float().unsqueeze(0)
             #     diff = torch.nn.functional.mse_loss(current_enc, enc2.detach())
             diff = torch.nn.functional.mse_loss(pred_loc, target_loc.detach())
             #     diff = -1 * current_enc[0].T @ enc2[0].detach()

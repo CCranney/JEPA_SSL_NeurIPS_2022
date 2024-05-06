@@ -146,8 +146,8 @@ class SimCLR(torch.nn.Module):
         )
         pred_projs = []
 
-        action_loss = torch.tensor(0.0).cuda()
-        info_nce_loss = torch.tensor(0.0).cuda()
+        action_loss = torch.tensor(0.0).to('mps')
+        info_nce_loss = torch.tensor(0.0).to('mps')
 
         for i in range(T - 1):
             pred_enc = pred_encs[i]
@@ -162,7 +162,7 @@ class SimCLR(torch.nn.Module):
 
             current_enc = pred_enc
 
-        reconstruction_loss = torch.tensor(0.0).cuda()
+        reconstruction_loss = torch.tensor(0.0).to('mps')
 
         if self.args.decoding_coeff > 0:
             flattened_states_enc = states_enc.view(-1, self.embedding)

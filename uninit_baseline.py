@@ -83,15 +83,15 @@ class Trainer:
         if self.config.model_type == ModelType.RSSM:
             self.model_config = self.config.rssm
             self.pred_ms = RSSMPredMultistep(config.rssm)
-            self.pred_ms = self.pred_ms.cuda()
+            self.pred_ms = self.pred_ms.to('mps')
         elif self.config.model_type == ModelType.VICReg:
             self.model_config = self.config.vicreg
             self.pred_ms = VICRegPredMultistep(self.config.vicreg)
-            self.pred_ms = self.pred_ms.cuda()
+            self.pred_ms = self.pred_ms.to('mps')
         elif self.config.model_type == ModelType.SimCLR:
             self.model_config = self.config.simclr
             self.pred_ms = SimCLR(config.simclr)
-            self.pred_ms = self.pred_ms.cuda()
+            self.pred_ms = self.pred_ms.to('mps')
         else:
             raise ValueError(f"No valid model type : {self.config.model_type}")
         if config.wandb:
