@@ -40,7 +40,7 @@ States are each 28x28 grayscale images. They come in sequences of 17 images each
 1. Straight from the data generator before the forward pass, these states have the shape `torch.Size([32, 17, 1, 28, 28])`. These represent the batch size, timesteps, an unknown variable, height, and width of the images. The unknown variable is probably number of colors, which is only 1 with grayscale.
 2. The dimensions are shuffled around to shape `torch.Size([17, 32, 1, 28, 28])` before entering the forward pass. Note that the timesteps and batch sizes were swapped.
 3. (in the forward pass) All the images are basically concatenated into one long tensor of size `torch.Size([544, 1, 28, 28])`. Note the batch size x timestep dimension at the front.
-4. The states are encoded (using the model represented by the `backbone` class variable). This is variable, but the developer used a MeNet5 architecture (outlined in the `models.py` file. The output is of shape `torch.Size([544, 512])`. To be investigated in the future.
+4. The states are encoded (using the model represented by the `backbone` class variable). This is variable, but the developer used a MeNet5 architecture (outlined in the `models.py` file). The output is of shape `torch.Size([544, 512])`. To be investigated in the future.
 5. The timestep and batch sizes are again differentiated, so the shape is `torch.Size([17, 32, 512])`.
 6. This is where I stopped for the day.
 
