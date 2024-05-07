@@ -75,3 +75,79 @@ Here's a printout of the actions **corresponding to the above picture:**
 4. Actions are not passed through the `backbone` model, as expected, but thought I'd point out the difference in treatment between states and actions (and their corresponding shape changes) up to this point.
 5. I did not get to any action manipulations in the forward pass today.
 
+## 2024/05/06 log (VICRegPredMultistep class in `vicreg.py`):
+
+Continuing my evaluation of the forward pass. I reached this line in the function last time, and will be continuing from there:
+
+`all_states_enc = all_states_enc.view(*states.shape[:2], -1)`
+
+### Encoder and Expander
+
+This is diverging a bit from what I would expect. I'm going to give a high-level overview of what is happening and go from there.
+
+If you'll recall from the diagrams of the original JEPA paper, there are generally three neural net bottlenecks of the JEPA architecture. The first of those is at least one encoder/perceiver, which encodes some kind of input. X and Y are encoded separately, and theoretically can be from different mediums and therefore encoded differently, but all instances of JEPA I am familiar with use the same encoder for both X and Y. In this code the backbone is the encoder, or perceiver, as described in the original JEPA paper. 
+
+In this code, the encoder is applied to all 17 states right at the beginning. 
+
+A projector object is also used. It is defunct in this current run of code, but I believe it is meant to be the expander of Figure 14 "Training a JEPA with VICReg" in the original JEPA paper. I believe it's purpose is to expand the number of features represented by the encoded representation. This would in turn enhance the VICReg regularization method, which tries to distinguish samples across a batch to avoid model collapse. It makes the encoded data bigger and more detailed, basically. 
+
+The projector/expander in this instance is just an nn.Identity() module, which simply passes the input forward as output (it's an empty placeholder). It allows, however, for a simple MLP to be implemented instead.
+
+So, continuing from the above **states** breakdown:
+
+1. The current encoded state object shape is `torch.Size([17, 32, 512])`.
+2. Some allowance is made for "burnin" variables to be made for both actions and states. Burn-in is a principle of "warming up" an RNN before training is initiated. In this case, these principles are ignored, though such features have been implemented if desired.
+3. The encoded state is passed through the projector. Again, in the present code, this does nothing.
+
+### Predictor
+
+The first state is the only true X of the dataset. The program then consists of an GRU RNN (the predictor) that tries to predict each state sequentially, only using the next action and the previous estimated state to predict each new state. The actions are therefore considered the input. A loss is computed between each prediction and it's corresponding actual encoded state. In short, the first state is X, and following states are Y at their own timestep. **This means that the other states are never actually fed into the model directly.** In many ways, the program is trying to predict the end from the beginning in a hierarchical fashion. See the `RNNPredictor` class in `model.py` for more details.
+
+This is all explained by Figure 1 of the paper, the left-hand side. I just didn't realize I was looking at an RNN when I saw it the first time. The output at each timestep is used for direct comparison with the actual state at that timestep for the loss function.
+
+1. The first encoded state (`current_enc`) and all of the actions are fed into the predictor module with the `self.predictor.predict_sequence` line. Ignore the h0, that's an ignored element of the burn-in bit explained earlier.
+2. NOTE: I just realized, but the first state fed into the RNN is not projected at all. Only subsequent states were.
+3. The output is of shape `torch.Size([16, 32, 512])`. These are the predictions made by the model, one for each sequential action.
+4. Notably, the predictions are also fed to the projector before comparison with the actual states (NOT during the RNN itself). Again, this does nothing in this instance, but that would apply if the projector was an actual MLP.
+5. Sometimes the projection is ignored, depending on user input (depends on value of `self.args.repr_loss_after_projector`).
+
+
+### Losses
+
+Something I was kind of scratching my head over - This was supposd to preform VICReg loss functions, but wasn't seeing a reference to such loss in the places I would expect. It all happens at the end of the forward function.
+
+#### Invariance / Normal Loss
+
+1. The MSE loss between the predicted projected states (`pred_proj`) and the actual projected states (`states_proj`) is calculated. Each of them are added to a total loss saved in the variable `repr_loss` (representative loss, I assume).
+2. There is also the option of using the current state and the next state to predict the action (depending on the value of `self.args.action_coeff`). This prediction is a pretty simple linear MLP, no activation function, predicting the 2 floats of the activation from the concatenation of those two states.
+3. If chosen, there is also an action loss saved to `action_loss`.
+4. Both `repr_loss` and `action_loss` are normalized by dividing by 16 (timesteps-1).
+
+#### Reconstruction Loss
+
+It looks like you have the option of decoding the encoded states (not the predicted or projected states) and calculating a loss respective to that decoding process.
+Pretty simple:
+
+1. Flatten the encoded states
+2. Run through a decoder (`VAEDecoder` in this case).
+3. Calculate the loss between the decoded states and the original states.
+4. There's also a visualization option available.
+
+#### Variance and Covariance Loss
+
+Here we go. 
+
+1. All encoded and projected states (NOT predicted states!) are zipped up and looped over with `for enc, proj in enc_projs`.
+2. Depending on user input, this can skip the first encoded/projected state (see `self.args.skip_first_step_vc`).
+3. There are various if/else statements here, but the variance and covariance are calculated using `get_cov_std_loss(proj)`.
+4. Some settings let you skip running `get_cov_std_loss(enc)`, which makes sense in this case. No projection occurred, so this shouldn't be run for both.
+5. The covariance and I assume variance (`std` probably being standard deviation) loss is added to a growing total for each.
+
+#### Final Loss Summary
+
+1. All the losses are added together.
+2. Notably, the user can set various coefficients for each of these losses to selectively reduce their impact.
+3. All losses are returned in a `LossInfo` class alongside the total loss. The non-total losses are put in a `diagnostics.VICRegDiagnostics` class, which I assume is used for tracking them for W&B metrics.
+
+And that's the workflow in a nutshell.
+
